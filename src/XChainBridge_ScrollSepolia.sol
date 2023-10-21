@@ -21,21 +21,21 @@ contract LayerZeroSwap_ScrollSepolia is NonblockingLzApp {
     ILayerZeroEndpoint public immutable endpoint;
  
     // Instance of the Chainlink price feed contract
-    AggregatorV3Interface internal immutable priceFeed;
+    AggregatorV3Interface internal immutable ethUsdPriceFeed;
 
     /**
      * @dev Constructor that initializes the contract with the LayerZero endpoint.
      * @param _sourceLzEndpoint Address of the LayerZero endpoint on ScrollSepolia testnet:
      * 0x6098e96a28E02f27B1e6BD381f870F1C8Bd169d3
-     * @param _priceFeed Chainlink price feed address for ETH/USD feed ScrollSepolia testnet:
+     * @param _ethUsdPriceFeed Chainlink price feed address for ETH/USD feed ScrollSepolia testnet:
      * 0x59F1ec1f10bD7eD9B938431086bC1D9e233ECf41
      * @notice The destChainId is being hardcoded under an if condition. This is an innefficient approach.
      * Not fit for production. This is only for demo purposes.
      */
-    constructor(address _sourceLzEndpoint, address _priceFeed) NonblockingLzApp(_sourceLzEndpoint) {
+    constructor(address _sourceLzEndpoint, address _ethUsdPriceFeed) NonblockingLzApp(_sourceLzEndpoint) {
         deployer = payable(msg.sender);
         endpoint = ILayerZeroEndpoint(_sourceLzEndpoint);
-        priceFeed = AggregatorV3Interface(_priceFeed);
+        ethUsdPriceFeed = AggregatorV3Interface(_ethUsdPriceFeed);
 
         // If Source == ScrollSepolia, then Destination Chain = Mumbai
         if (_sourceLzEndpoint == 0x6098e96a28E02f27B1e6BD381f870F1C8Bd169d3) destChainId = 10109;
@@ -50,14 +50,14 @@ contract LayerZeroSwap_ScrollSepolia is NonblockingLzApp {
      */
     function swapTo_MATIC(address Receiver) public payable {
         require(msg.value >= 1 ether, "Please send at least 1 ETH");
-        uint value = msg.value;
 
         bytes memory trustedRemote = trustedRemoteLookup[destChainId];
         require(trustedRemote.length != 0, "LzApp: destination chain is not a trusted source");
         _checkPayloadSize(destChainId, payload.length);
-        
-        int price;
-        (, price,,,) = priceFeed.latestRoundData();
+
+        //Getting the latest price of ETH/USD
+        (,int ETH_USD,,,) =  ethUsdPriceFeed.latestRoundData();
+        int value = (int256(msg.value)*ETH_USD)/(10**18);
 
         // The message is encoded as bytes and stored in the "payload" variable.
         payload = abi.encode(Receiver, value);
@@ -69,9 +69,9 @@ contract LayerZeroSwap_ScrollSepolia is NonblockingLzApp {
      * @dev Internal function to handle incoming LayerZero messages.
      */
     function _nonblockingLzReceive(uint16 _srcChainId, bytes memory _srcAddress, uint64 _nonce, bytes memory _payload) internal override {
-        (address Receiver , uint Value) = abi.decode(_payload, (address, uint));
+        (address Receiver , int Value) = abi.decode(_payload, (address, int));
         address payable recipient = payable(Receiver);        
-        recipient.transfer(Value);
+        recipient.transfer(uint(Value));
     }
 
     // Fallback function to receive ether
