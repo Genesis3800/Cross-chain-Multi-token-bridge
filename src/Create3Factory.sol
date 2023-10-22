@@ -14,6 +14,12 @@ contract Create3Factory {
     function getDeployed(bytes32 salt) public view returns (address) {
         return CREATE3.getDeployed(salt);
     }
+}
 
+interface ICreate3Factory {
+
+    function deploy(bytes32 salt, bytes memory bytecode, uint256 value) external returns (address deployed);
+
+    function getDeployed(bytes32 salt) external view returns (address);
 }
 
