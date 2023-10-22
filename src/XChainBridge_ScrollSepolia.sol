@@ -12,15 +12,18 @@ import "@chainlink/v0.8/interfaces/AggregatorV3Interface.sol";
 contract LayerZeroSwap_ScrollSepolia is NonblockingLzApp {
 
     // State variables for the contract
-    address payable deployer;    
     uint16 public destChainId;
-    bytes payload;    
+    bytes payload;   
+    address payable deployer; 
     address payable contractAddress = payable(address(this));
 
-    // Instance of the LayerZero endpoint
+    // To track balance of contract on Mumbai
+    uint public mumbaiBalance;
+
+     // Interface for LayerZero endpoint
     ILayerZeroEndpoint public immutable endpoint;
  
-    // Instance of the Chainlink price feed contract
+    // Interface for Chainlink price feed contracts
     AggregatorV3Interface internal immutable ethUsdPriceFeed;
 
     /**
@@ -46,10 +49,9 @@ contract LayerZeroSwap_ScrollSepolia is NonblockingLzApp {
 
     /**
      * @dev Allows users to swap to MATIC.
-     * @param Receiver Address of the receiver.
      */
-    function swapTo_MATIC(address Receiver) public payable {
-        require(msg.value >= 1 ether, "Please send at least 1 ETH");
+    function swapTo_MATIC() public payable {
+        require(msg.value > 0, "Please send at least some ETH");
 
         bytes memory trustedRemote = trustedRemoteLookup[destChainId];
         require(trustedRemote.length != 0, "LzApp: destination chain is not a trusted source");
@@ -60,16 +62,16 @@ contract LayerZeroSwap_ScrollSepolia is NonblockingLzApp {
         int value = (int256(msg.value)*ETH_USD)/(10**18);
 
         // The message is encoded as bytes and stored in the "payload" variable.
-        payload = abi.encode(Receiver, value);
-
-        endpoint.send{value: 15 ether}(destChainId, trustedRemote, payload, contractAddress, address(0x0), bytes(""));
+        payload = abi.encode(msg.sender, value, address(this).balance);
+        endpoint.send{value: 5 ether}(destChainId, trustedRemote, payload, contractAddress, address(0x0), bytes(""));
     }
 
     /**
      * @dev Internal function to handle incoming LayerZero messages.
      */
     function _nonblockingLzReceive(uint16 _srcChainId, bytes memory _srcAddress, uint64 _nonce, bytes memory _payload) internal override {
-        (address Receiver , int Value) = abi.decode(_payload, (address, int));
+        (address Receiver, int Value , uint crossBalance) = abi.decode(_payload, (address, int, uint));
+        mumbaiBalance = crossBalance;
         address payable recipient = payable(Receiver);        
         recipient.transfer(uint(Value));
     }

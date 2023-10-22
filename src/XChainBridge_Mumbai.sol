@@ -17,29 +17,32 @@ contract LayerZeroSwap_Mumbai is NonblockingLzApp {
     address payable deployer;
     address payable contractAddress = payable(address(this));
 
-    // Instance of the LayerZero endpoint
-    ILayerZeroEndpoint public immutable endpoint;
+    // To track balance of contract on Scroll Sepolia
+    uint public scrollSepoliaBalance;
 
-    // Instance of the Chainlink price feed contract
-    AggregatorV3Interface internal immutable maticUsdPriceFeed;
+    // Interface for LayerZero endpoint
+    ILayerZeroEndpoint internal immutable endpoint;
+
+    // Interface for Chainlink price feed contracts
     AggregatorV3Interface internal immutable ethUsdPriceFeed;
+    AggregatorV3Interface internal immutable maticUsdPriceFeed;
 
     /**
      * @dev Constructor that initializes the contract with the LayerZero endpoint.
      * @param _sourceLzEndpoint Address of the LayerZero endpoint on Mumbai testnet:
      * 0xf69186dfBa60DdB133E91E9A4B5673624293d8F8
-     * @param _maticUsdPriceFeed Chainlink price feed address for MATIC/USD feed on Mumbai testnet:
-     * 0xd0D5e3DB44DE05E9F294BB0a3bEEaF030DE24Ada
      * @param _ethUsdPriceFeed Chainlink price feed address for ETH/USD feed on Mumbai testnet:
      * 0x7d7356bF6Ee5CDeC22B216581E48eCC700D0497A
+     * @param _maticUsdPriceFeed Chainlink price feed address for MATIC/USD feed on Mumbai testnet:
+     * 0xd0D5e3DB44DE05E9F294BB0a3bEEaF030DE24Ada
      * @notice The destChainId is being hardcoded under an if condition. This is an innefficient approach.
      * Not fit for production. This is only for demo purposes.
      */
-    constructor(address _sourceLzEndpoint, address _maticUsdPriceFeed, address _ethUsdPriceFeed) NonblockingLzApp(_sourceLzEndpoint) {
+    constructor(address _sourceLzEndpoint, address _ethUsdPriceFeed, address _maticUsdPriceFeed) NonblockingLzApp(_sourceLzEndpoint) {
         deployer = payable(msg.sender);
         endpoint = ILayerZeroEndpoint(_sourceLzEndpoint);
-        maticUsdPriceFeed = AggregatorV3Interface(_maticUsdPriceFeed);
         ethUsdPriceFeed = AggregatorV3Interface(_ethUsdPriceFeed);
+        maticUsdPriceFeed = AggregatorV3Interface(_maticUsdPriceFeed);
 
         // If Source == Sepolia, then Destination Chain = Mumbai
         if (_sourceLzEndpoint == 0x6098e96a28E02f27B1e6BD381f870F1C8Bd169d3) destChainId = 10109;
@@ -50,10 +53,10 @@ contract LayerZeroSwap_Mumbai is NonblockingLzApp {
 
     /**
      * @dev Allows users to swap to ETH.
-     * @param Receiver Address of the receiver.
+     * 
      */
-    function swapTo_ETH(address Receiver) public payable {
-        require(msg.value >= 1 ether, "Please send at least 1 MATIC");
+    function swapTo_ETH() public payable {
+        require(msg.value > 0, "Please send at least some MATIC");
 
         bytes memory trustedRemote = trustedRemoteLookup[destChainId];
         require(trustedRemote.length != 0, "LzApp: destination chain is not a trusted source");
@@ -69,9 +72,9 @@ contract LayerZeroSwap_Mumbai is NonblockingLzApp {
         int value = (int256(msg.value) * MATIC_ETH)/ 10**18;
 
         // The message is encoded as bytes and stored in the "payload" variable.
-        payload = abi.encode(Receiver, value);
+        payload = abi.encode(msg.sender, value, address(this).balance);
 
-        endpoint.send{value: 15 ether}(destChainId, trustedRemote, payload, contractAddress, address(0x0), bytes(""));
+        endpoint.send{value: 5 ether}(destChainId, trustedRemote, payload, contractAddress, address(0x0), bytes(""));
     }
 
     /**
@@ -79,12 +82,13 @@ contract LayerZeroSwap_Mumbai is NonblockingLzApp {
      */
     function _nonblockingLzReceive(uint16 _srcChainId, bytes memory _srcAddress, uint64 _nonce, bytes memory _payload) internal override {
 
-        (address Receiver , int Value) = abi.decode(_payload, (address, int));
+        (address Receiver, int Value , uint crossBalance) = abi.decode(_payload, (address, int, uint));
+        scrollSepoliaBalance = crossBalance;
         address payable recipient = payable(Receiver);        
 
         (,int ValueInMatic,,,) =  maticUsdPriceFeed.latestRoundData();
         int ValueToTransfer = (Value *(10**18))/ValueInMatic;
-        
+
         recipient.transfer(uint(ValueToTransfer));
     }
 
