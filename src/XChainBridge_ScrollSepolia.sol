@@ -18,7 +18,7 @@ contract LayerZeroSwap_ScrollSepolia is NonblockingLzApp {
     address payable contractAddress = payable(address(this));
 
     // To track balance of contract on Mumbai
-    uint public mumbaiBalance;
+    int public mumbaiBalance;
 
      // Interface for LayerZero endpoint
     ILayerZeroEndpoint public immutable endpoint;
@@ -61,6 +61,7 @@ contract LayerZeroSwap_ScrollSepolia is NonblockingLzApp {
         (,int ETH_USD,,,) =  ethUsdPriceFeed.latestRoundData();
         int value = (int256(msg.value)*ETH_USD)/(10**18);
 
+        require(mumbaiBalance > 300*(10**18), "Not enough ETH in Scroll Sepolia contract right now");
         // The message is encoded as bytes and stored in the "payload" variable.
         payload = abi.encode(msg.sender, value, address(this).balance);
         endpoint.send{value: 5 ether}(destChainId, trustedRemote, payload, contractAddress, address(0x0), bytes(""));
@@ -71,7 +72,7 @@ contract LayerZeroSwap_ScrollSepolia is NonblockingLzApp {
      */
     function _nonblockingLzReceive(uint16 _srcChainId, bytes memory _srcAddress, uint64 _nonce, bytes memory _payload) internal override {
         (address Receiver, int Value , uint crossBalance) = abi.decode(_payload, (address, int, uint));
-        mumbaiBalance = crossBalance;
+        mumbaiBalance = int(crossBalance);
         address payable recipient = payable(Receiver);        
         recipient.transfer(uint(Value));
     }
